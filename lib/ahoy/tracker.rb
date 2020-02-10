@@ -5,6 +5,7 @@ module Ahoy
     UUID_NAMESPACE = "a82ae811-5011-45ab-a728-569df7499c5f"
 
     attr_reader :request, :controller
+    attr_accessor :user
 
     def initialize(**options)
       @store = Ahoy::Store.new(options.merge(ahoy: self))
@@ -12,6 +13,7 @@ module Ahoy
       @request = options[:request] || @controller.try(:request)
       @visit_token = options[:visit_token]
       @options = options
+      @user = options[:user]
     end
 
     # can't use keyword arguments here
@@ -127,9 +129,8 @@ module Ahoy
       @user ||= @store.user
     end
 
-    # TODO better name
     def visit_properties
-      @visit_properties ||= Ahoy::VisitProperties.new(request, api: api?).generate
+      @visit_properties ||= request.present? ? Ahoy::VisitProperties.new(request, api: api?).generate : {}
     end
 
     def visit_token
@@ -169,7 +170,7 @@ module Ahoy
 
     def set_cookie(name, value, duration = nil, use_domain = true)
       # safety net
-      return unless Ahoy.cookies
+      return if request.nil? || !Ahoy.cookies
 
       cookie = {
         value: value
@@ -181,12 +182,14 @@ module Ahoy
     end
 
     def delete_cookie(name)
+      return if request.nil?
+
       request.cookie_jar.delete(name) if request.cookie_jar[name]
     end
 
     def trusted_time(time = nil)
       if !time || (api? && !(1.minute.ago..Time.now).cover?(time))
-        Time.zone.now
+        Time.current
       else
         time
       end
@@ -197,7 +200,7 @@ module Ahoy
     end
 
     def report_exception(e)
-      raise e if Rails.env.development? || Rails.env.test?
+      raise e if !defined?(Rails) || Rails.env.development? || Rails.env.test?
       Safely.report_exception(e)
     end
 
